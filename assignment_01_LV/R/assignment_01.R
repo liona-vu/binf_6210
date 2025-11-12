@@ -6,7 +6,14 @@
 ## by: Liona Vu 
 ##
 ## 13 October 2025
-##***************************
+
+##Background:                                                                                 Tardigrades are tiny, resilient animals found worldwide.Studying their biodiversity helps us understand global patterns of species diversity and adaptation.This analysis uses BOLD database records to compare diversity and sampling across continents.
+
+##Research Question:                                                                             How do tardigrade diversity and sampling completeness differ across North America, South America, and Antarctica using data from the BOLD database?
+
+##Hypothesis:                                                                              Tardigrade biodiversity varies across different continents, with more sampling efforts resulting in higher diversity.
+
+##********************************************************************************************
 
 ## Packages that will be used for this analysis
 ## Loading in the packages required for this analysis.
