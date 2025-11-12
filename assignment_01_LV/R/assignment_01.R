@@ -90,7 +90,6 @@ identical(
 sum(df_tardigrada$bin_uri == "", na.rm = TRUE)
 sum(df_tardigrada$country_ocean == "", na.rm = TRUE)
 
-
 ## Checking of the data
 glimpse(df_tardigrada)
 class(df_tardigrada) #is a dataframe
@@ -105,26 +104,40 @@ nrow(df_tardigrada)
 barplot(head(table(df_tardigrada$country_ocean), n = 10))
 
 ## Creating continent vectors to define which countries belong to which continent
-## based on the countries listed in the database
-north_america <- c("Canada", "United States", "Mexico")
-south_america <- c("Chile", "Argentina", "Brazil", "French Guiana", "Ecuador", "Colombia")
-antartica <- "Antarctica" #decide to include since it has so many BIN counts
+## Reusable country–continent lookup table (easier to add more countries and expand dataset later, good for reproducibility) 
+continent_lu <- tibble::tibble(
+  country_ocean = c(
+    "Canada", "United States", "Mexico",
+    "Chile", "Argentina", "Brazil", "French Guiana", "Ecuador", "Colombia",
+    "Antarctica"
+  ),
+  continent = c(
+    rep("North America", 3),
+    rep("South America", 6),
+    "Antarctica"
+  )
+)
 
-## Creating another continent column and categorizing which countries belong to 
-## which regions. 
-df_tardigrada <- df_tardigrada %>% 
-  mutate(continent = case_when(
-    country_ocean %in% north_america ~ "North America",
-    country_ocean %in% south_america ~ "South America",
-    country_ocean %in% antartica ~ "Antarctica",
-    TRUE ~ "Other"))
+## Join lookup table to main dataset and fill missing values as "Other"
+df_tardigrada <- df_tardigrada %>%
+  dplyr::left_join(continent_lu, by = "country_ocean") %>%
+  dplyr::mutate(continent = dplyr::coalesce(continent, "Other"))
 
 ## Confirming the newly made continent column
 glimpse(df_tardigrada)
 head(df_tardigrada$continent)
+#Check counts by continent
+df_tardigrada %>% count(continent, sort = TRUE)
+#See what became other incase you want to explore more countries
+df_tardigrada %>%
+distinct(country_ocean) %>%
+  anti_join(continent_lu, by = "country_ocean") %>%
+  arrange(country_ocean) %>%
+  head(30)
+#Filter to the target groups
+df_tardigrada <- df_tardigrada %>%
+  dplyr::filter(continent %in% c("North America","South America","Antarctica"))
 
-## Since some cells in the bin_uri column are empty, adding NA to the empty cells
-df_tardigrada$bin_uri[df_tardigrada$bin_uri == ""] <- NA
 
 ## Selecting only columns of interest for the analysis
 df_tardigrada_simple <- df_tardigrada %>% 
