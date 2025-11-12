@@ -15,17 +15,37 @@
 
 ##********************************************************************************************
 
-## Packages that will be used for this analysis
+## Packages that will be used for this analysis **Old version
 ## Loading in the packages required for this analysis.
-library("dplyr")
-library("tidyverse")
-library("readr")
-library("janitor")
-library("tidyr")
-library("vegan")
-library("ggplot2")
-library("ggpubr") #for adding p values to ggplot2 graphs
+#library("dplyr")
+#library("tidyverse")
+#library("readr")
+#library("janitor")
+#library("tidyr")
+#library("vegan")
+#library("ggplot2")
+#library("ggpubr") #for adding p values to ggplot2 graphs
+
+#Package set-up **New version
+required_packages <- c(
+  "tidyverse",   # includes dplyr, ggplot2, tidyr, readr, etc.
+  "janitor",     # data cleaning (e.g., clean_names)
+  "vegan",       # biodiversity analysis
+  "ggpubr"       # adding p-values and annotations to ggplots
+)
+# Install any missing packages automatically
+installed_packages <- rownames(installed.packages())
+for (pkg in required_packages) {
+  if (!pkg %in% installed_packages) {
+    install.packages(pkg, dependencies = TRUE)
+  }
+  library(pkg, character.only = TRUE)
+}
+#Visual set-up
 theme_set(theme_light())
+
+#Lock packages versions for reproducibility 
+sessionInfo()
 
 ## Can also use BOLD API to read in the data 
 ## df_tardigrada <- read_delim("https://www.boldsystems.org/index.php/API_Public/combined?taxon=Tardigrada&format=tsv")
