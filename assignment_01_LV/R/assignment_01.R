@@ -13,27 +13,16 @@
 
 ##Hypothesis:Tardigrade biodiversity varies across different continents, with more sampling efforts resulting in higher diversity.
 
-##********************************************************************************************
+##===========================================================================
 
-## Packages that will be used for this analysis **Old version
-## Loading in the packages required for this analysis.
-#library("dplyr")
-#library("tidyverse")
-#library("readr")
-#library("janitor")
-#library("tidyr")
-#library("vegan")
-#library("ggplot2")
-#library("ggpubr") #for adding p values to ggplot2 graphs
-
-#Package set-up **New version
+#Package set-up 
 required_packages <- c(
   "tidyverse",   # includes dplyr, ggplot2, tidyr, readr, etc.
   "janitor",     # data cleaning (e.g., clean_names)
   "vegan",       # biodiversity analysis
   "ggpubr"       # adding p-values and annotations to ggplots
 )
-# Install any missing packages automatically
+## Install any missing packages automatically
 installed_packages <- rownames(installed.packages())
 for (pkg in required_packages) {
   if (!pkg %in% installed_packages) {
@@ -41,38 +30,32 @@ for (pkg in required_packages) {
   }
   library(pkg, character.only = TRUE)
 }
-#Visual set-up
+## Visual set-up
 theme_set(theme_light())
 
-#Lock packages versions for reproducibility 
+## Lock packages versions for reproducibility 
 sessionInfo()
+
+## ===========================================================================
+# 0. Data Cleaning and Standardization to Prepare the Tardigrada Dataset for Analysis
+## ===========================================================================
 
 ## Can also use BOLD API to read in the data 
 ## df_tardigrada <- read_delim("https://www.boldsystems.org/index.php/API_Public/combined?taxon=Tardigrada&format=tsv")
 
-#old*
-## Importing the data file 
-#df_tardigrada <- read.delim("../data/tardigrada.tsv", sep = "\t") 
-
-
-## Cleaning up header names to snake cases.
-#df_tardigrada <- df_tardigrada %>% 
-#janitor::clean_names()
-#old*
-
-#New - Import with readr (tidyverse), clean names, and fix empty strings as NA in one pipe
+## Import, clean names, and fix empty strings as NA in one pipe
 df_raw <- read_tsv(
   "../data/tardigrada.tsv",
-  col_types = cols(.default = col_character()), #forced everything as character to avoid reading issues of non-numeric variables
+  col_types = cols(.default = col_character()), #forced everything as character to avoid reading issues
   progress = FALSE, show_col_types = FALSE
 )
 
 glimpse(df_raw)
 
-# Should not have any parsing warnings however can be investigated by uncommenting below
-# readr::problems(raw)
+#Should not have any parsing warnings however can be investigated by uncommenting below
+#readr::problems(raw)
 
-#Data cleaning to snake case, removing weird characters/spaces
+## Data cleaning to snake case, removing weird characters/spaces
 
 df_tardigrada <- df_raw |>
   janitor::clean_names() |>
@@ -81,30 +64,36 @@ df_tardigrada <- df_raw |>
     country_ocean = na_if(country_ocean, "")
   )
 
-##CHECK: Should be TRUE if names were cleaned
+## CHECK: Should be TRUE if names were cleaned
 identical(
   names(df_tardigrada),
   janitor::make_clean_names(names(df_raw))
 )
+
 ## CHECK: These should both be 0 now, confirming if empty strings are converted to NA
 sum(df_tardigrada$bin_uri == "", na.rm = TRUE)
 sum(df_tardigrada$country_ocean == "", na.rm = TRUE)
 
-## Checking of the data
+## Take a look at the data
 glimpse(df_tardigrada)
 class(df_tardigrada) #is a dataframe
 
 ## Exploratory data analysis to gain insight into the tardigrade BOLD dataset
-sort(table(df_tardigrada$country_ocean), decreasing = TRUE) #1547 rows of unrecoverable
-## and 889 empty
-sort(table(df_tardigrada$bin_uri), decreasing = TRUE) #2647 rows with no BOLD ID
-nrow(df_tardigrada)
+sort(table(df_tardigrada$country_ocean), decreasing = TRUE) # 1547 rows of unrecoverable and 889 empty
+sort(table(df_tardigrada$bin_uri), decreasing = TRUE) # 2647 rows with no BOLD ID
 
-#simple histogram to see top 10 country counts
+nrow(df_tardigrada) #5492
+
+## Simple histogram to see top 10 country counts
 barplot(head(table(df_tardigrada$country_ocean), n = 10))
 
-## Creating continent vectors to define which countries belong to which continent
+## ===========================================================================
+# 1. Building a Reproducible Continent Lookup Table to Clean the Dataset and enable Regional Diversity Comparisons    
+## ===========================================================================
+
+## Creating continents as a variable/new column to define which countries belong to which continent
 ## Reusable country–continent lookup table (easier to add more countries and expand dataset later, good for reproducibility) 
+
 continent_lu <- tibble::tibble(
   country_ocean = c(
     "Canada", "United States", "Mexico",
@@ -118,23 +107,26 @@ continent_lu <- tibble::tibble(
   )
 )
 
-## Join lookup table to main dataset and fill missing values as "Other"
+## Join the new country/continent table to main dataset  
 df_tardigrada <- df_tardigrada %>%
   dplyr::left_join(continent_lu, by = "country_ocean") %>%
-  dplyr::mutate(continent = dplyr::coalesce(continent, "Other"))
+  dplyr::mutate(continent = dplyr::coalesce(continent, "Other")) #replace the NAs as "Other"
 
 ## Confirming the newly made continent column
 glimpse(df_tardigrada)
 head(df_tardigrada$continent)
-#Check counts by continent
+
+#Check counts by continent (4573 are other, 681 are Antartica, 164 NA and 74 SA)
 df_tardigrada %>% count(continent, sort = TRUE)
+
 #See what became other incase you want to explore more countries
 df_tardigrada %>%
 distinct(country_ocean) %>%
   anti_join(continent_lu, by = "country_ocean") %>%
   arrange(country_ocean) %>%
   head(30)
-#Filter to the target groups
+
+## Filter to the target groups
 df_tardigrada <- df_tardigrada %>%
   dplyr::filter(continent %in% c("North America","South America","Antarctica"))
 
@@ -142,7 +134,7 @@ df_tardigrada <- df_tardigrada %>%
 df_tardigrada_simple <- df_tardigrada %>% 
   select(bin_uri, country_ocean, continent)
 
-##Checking whether the df_tardigrada_simple was properly made
+## Checking whether the df_tardigrada_simple was properly made 
 glimpse(df_tardigrada_simple)
 
 ## Filtering out NAs from the dataset in continent and bin uri
@@ -153,8 +145,7 @@ df_tardigrada_filtered <- df_tardigrada_simple %>%
 glimpse(df_tardigrada_filtered)
 
 ## Checking if Na values are removed from bin_uri column
-sum(is.na(df_tardigrada_filtered$bin_uri)) 
-## Returns value of 0, no NA values 
+sum(is.na(df_tardigrada_filtered$bin_uri))  # Returns value of 0, no NA values 
 
 
 ## Count and plot unique BINs by continent using summarise(.by=)
@@ -163,6 +154,7 @@ df_count_bins <- df_tardigrada_filtered |>
   dplyr::summarise(record_count = dplyr::n_distinct(bin_uri), .by = continent)
 
 ## Create and store the plot
+
 plot_bins <- ggplot(df_count_bins,
                     aes(x = reorder(continent, record_count), y = record_count, fill = continent)) +
   geom_col(show.legend = FALSE) +
@@ -171,10 +163,15 @@ plot_bins <- ggplot(df_count_bins,
        x = "Continent", y = "Unique BINs") +
   coord_flip()
 
+plot_bins
+
 ## Save the plot
 ggsave("../figs/tardigrada_unique_bins.png", plot = plot_bins, width = 5, height = 5, dpi = 320)
 
-##Rarefaction 
+## ===========================================================================
+# 2.Rarefaction Workflow: Building a Community Matrix and Estimating Comparable BIN Richness Across Continents
+## ===========================================================================
+
 ## Build counts matrix in one step (rows = continent, cols = BINs)
 comm <- xtabs(~ continent + bin_uri, data = df_tardigrada_filtered)
 
@@ -230,10 +227,11 @@ if (!dir.exists("../figs")) dir.create("../figs", recursive = TRUE)
 ggsave("../figs/tardigrada_rarefaction_ggplot.png", plot = plot_rarefaction,
        width = 6, height = 5, dpi = 320)
 
+## ===========================================================================
+## 3. Computing Shannon Diversity, Assessing Statistical Significance, and Producing Comparative Boxplots
+## ===========================================================================
 
-
-## Calculating the diversity using Shannon's Index of Diversity for each country
-## in each continent using the diversity function in vegan package
+## Calculating the diversity using Shannon's Index of Diversity for each country in each continent using the diversity function in vegan package
 df_shannon_index <- df_tardigrada_filtered %>%  
   group_by(country_ocean, continent) %>% 
   reframe(shannon = diversity(table(bin_uri)))
@@ -246,11 +244,9 @@ df_shannon_index %>%
 df_shannon_index <- df_shannon_index[-1,]
 df_shannon_index
 
-## Checking whether the data is normally distributed by performing the 
-## Shapiro-Wilk test
+## Checking whether the data is normally distributed by performing the Shapiro-Wilk test
 shapiro.test(df_shannon_index$shannon)
-## p value = 0.5005, data is not significantly
-## different from normal distribution therefore, normality is assumed.
+## p value = 0.5005, data is not significantly different from normal distribution therefore, normality is assumed.
 
 ## Calculate significance 
 t.test(shannon ~ continent, data = df_shannon_index) #not significant, p = 0.38
