@@ -4,8 +4,12 @@
 ## Assignment 01
 ##
 ## by: Liona Vu 
-## Contributors: Arwa Sheheryar (Editor) 
+##
+## Contributors: Arwa Sheheryar (Main Editor), Rameen Jafri, and Yumna Khan (group members)
+##
 ## 13 October 2025
+##
+## Last updated: 15 Nov 2025
 
 ## Background:Tardigrades are tiny, resilient animals found worldwide.Studying their biodiversity helps us understand global patterns of species diversity and adaptation. This analysis uses BOLD database records to compare diversity and sampling across continents.
 
