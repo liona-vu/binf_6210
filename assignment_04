@@ -4,22 +4,19 @@
 
 ####  By: Liona Vu
 
-####  Last Updated: 01 Dec 2025
+####  Last Updated: 02 Dec 2025
 
 #### BACKGROUND INFO  ####
 ## The Muridae group is a fascinating taxonomic class as it contains well-known research model organisms such as both Mus musculus (house mouse) and the Rattus norvegicus (brown rat). In fact, several genes such as Cytb which are mitochondrial genes, Irbp, a gene known for its function in vision, and Rag1, a gene involved in the immune function, are some key genes that have been well-studied and thus their roles have been robustly established in several biological processes. 
 
 ### RATIONALE
-## Due to their well-known role, it can be said that these genes should have many deposits on NCBI. Therefore, we can use these genes to generate robust classifiers, either for gene or species.
+## Due to their well-known role, it can be said that these genes should have many deposits on NCBI. Therefore, we can use these genes to generate robust classifiers, either for both genes or species.
 
 #### PROJECT OBJECTIVES 
-## The objective is to compare different kinds of classifiers on gene sequences to determine if each can accurately train and predict on unseen data.
+## The objective is to compare different kinds of classifiers using k-mers on gene sequences to determine if each can accurately train and predict on unseen data.
 
 #### HYPOTHESIS
 ## I predict genes classifiers will have higher accuracy than species classifiers...
-
-#### SOURCES 
-Some of the following code below was adapted from the random forest and rentrez scripts from the BINF6210 class.
 
 #### Step 1: LOADING IN OUR REQUIRED PACKAGES ####
 library(tidyverse)
@@ -31,8 +28,9 @@ library(randomForest)
 ## install.packages("pROC")
 library(caret)
 library(pROC)
+library(reshape2)
+library(vegan)
 library(ggplot2)
-library(ggpubr)
 theme_minimal()
 
 #### STEP 2: LOADING IN OUR DATA WITH RENTREZ PACKAGE ####
@@ -45,9 +43,9 @@ function_search <- function(taxon, gene_name) {
   if(!is.character(gene_name)) {
     stop("Gene_name input must be in string format!")
 }
-## Searching for sequences. Added a bp limit of 1000-5000 bp or else downloading will take forever, some sequences on NCBI are over 100,000,000 bp long! (I actually went and checked, some sequences were whole genome shotgun sequenced)
+## Searching for sequences. Added a bp limit of 1000-2000 bp or else downloading will take forever, some sequences on NCBI are over 100,000,000 bp long! (I actually went and checked, some sequences were whole genome shotgun sequenced)
   search_term <- paste((taxon), "[ORGN] AND ", gene_name, 
-                       " AND 1000:2000[SLEN]", sep = "") 
+                       " AND 1000:1500[SLEN]", sep = "") 
  ## search_temp <- entrez_search(db = "nuccore", term = search_term)
  ## max_hits <- search_temp$count
   search_hits <- entrez_search(db = "nuccore", term = search_term, retmax = 9999,
@@ -59,17 +57,17 @@ function_search <- function(taxon, gene_name) {
 fn_check <- function_search(taxon = "Mus musculus", gene_name = "Cytb[gene]") 
 fn_check$retmax #1624 instead of having the default retmax and ID value of 20
 class(fn_check) # esearch and list
-## Also performed a sanity check on NCBI and it also returned 2002 search results
+## Also performed a sanity check on NCBI and it also returned 1624 search results
 
 ## No longer needed so remove
 rm(fn_check)
 
 ## Enabling a vector of gene names to be downloaded from NCBI 
-genes_terms <- c("Cytb[gene] and complete CDS", #complete CDS for stringency, else we will get over 20,000 results!
+genes_terms <- c("Cytb[gene] and complete CDS", #complete CDS for stringency, else it will give over 20,000 results!
                  "Irbp[gene]",
                  "Rag1[gene]")
 
-## Creatin a loop to download all the NCBI datasets with genes of interest
+## Creating a loop to download all the NCBI datasets with genes of interest
 ncbi_muridae <- list()
 for (i in genes_terms) {
   cat("***** Downloading", i, "nucleotide database from NCBI ***** \n")
@@ -81,9 +79,9 @@ for (i in genes_terms) {
 ## Performing a quick preview check for the Muridae taxonomic class by taking a look at the NCBI summary
 class(ncbi_muridae) #is a list
 length(ncbi_muridae) #3, which is expected since we have 3 genes
-ncbi_muridae$`Cytb[gene] and complete CDS` #749
-ncbi_muridae$`Irbp[gene]` #1849
-ncbi_muridae$`Rag1[gene]` #893
+ncbi_muridae$`Cytb[gene] and complete CDS` #740
+ncbi_muridae$`Irbp[gene]` #1804
+ncbi_muridae$`Rag1[gene]` #853
 
 ## Since the console throws errors if we download too many IDs from NCBI and results are in the high hundreds, will randomly sample 200 from all gene ID list. Create a function to generate 200 random ids for each gene
 function_set_seed <- function(ids, seed) {
@@ -146,17 +144,6 @@ class(df_combined) #is a dataframe
 table(df_combined$gene) #Checking the genes and whether each column is 200, which it is
 
 #### STEP 3: FILTERING THE DATA ####
-## Since our samples column is messy, will try to rename and recreate a new column to their actual species name by using regex expressions
-## Species names always start with a capital letter, followed by a space, then lowercase letters
-## species_name <- str_extract(string = df_combined$samples, pattern = "[A-Z][a-z]+ [a-z]+")
-## species_name
-
-## Combining the species name and creating a new column
-## df_combine_2 <- cbind(df_combined, species_name)
-
-## Checking the distribution of the species names
-## table(df_combine_2$species_name)
-
 ## Filter in case there are any Na values in names, species_name, genes, and sequence columns
 conflicted::conflicts_prefer(dplyr::filter)
 df_combined_filtered <- df_combined %>%
@@ -165,9 +152,9 @@ df_combined_filtered <- df_combined %>%
          !is.na(sequences))
         
 ## Sanity check for Nas
-sum(is.na(df_combine_2_filtered$samples)) #Returns 0
-sum(is.na(df_combine_2_filtered$gene)) #Returns 0
-sum(is.na(df_combine_2_filtered$sequences)) #Returns 0
+sum(is.na(df_combined_filtered$samples)) #Returns 0
+sum(is.na(df_combined_filtered$gene)) #Returns 0
+sum(is.na(df_combined_filtered$sequences)) #Returns 0
 
 ## Check to see if ambiguous nucleotides are present in the sequences column which are marked by "N" and how many are present 
 sum(grepl(pattern = "N", df_combined_filtered$sequences)) # Some sequences have Ns
@@ -183,7 +170,7 @@ df_seq <- df_combined_filtered %>%
 ## Comparing the summary statistics of pre vs post filtering.
 summary(nchar(df_combined_filtered$sequences))
 summary(nchar(df_seq$sequences_2))
-## The stats have changed slightly which is to be expected while min value has stayed the same. A too steep of a change indicates that the filtering was too stringent.
+## The stats have stayed the same. A too steep of a change indicates that the filtering was too stringent.
 
 ## STEP 4: EXPLORATORY ANALYSIS ####
 ##Looking at the distribution of how long each gene is
@@ -192,37 +179,17 @@ hist(nchar(df_seq$sequences_2[df_seq$gene == "Cytb"]), xlab = "Sequence Length (
 hist(nchar(df_seq$sequences_2[df_seq$gene == "Irbp"]), xlab = "Sequence Length (bp)", main = "Frequencies of Irbp Sequence Lengths") 
 
 hist(nchar(df_seq$sequences_2[df_seq$gene == "Rag1"]), xlab = "Sequence Length (bp)", main = "Frequencies of Rag1 Sequence Lengths") 
-## Not really normally distributed
+## From some histograms, particularly Cytb and Rag1, it can be said that the gene sequences are not normally distributed. This is to be expected since genes sequences fall within a certain window of sequence lengths. Some sequences were on the larger end, due to potentially having multiple strains of muridae species.
 
-#### STEP 5: GENERATING OUR SPLITS AND CALCULATING SEQUENCE FEATURES ####
+#### STEP 5: CALCULATING SEQUENCE FEATURES AND TRAINING CLASSIFICATION MODEL WITH RANDOM FORESTS ####
 ## Converting sequences into the Biostrings class
 df_seq$sequences_2 <- DNAStringSet(df_seq$sequences_2)
 class(df_seq$sequences_2) #is a Biostrings class
-
-## Calculating the nucleotide frequencies and appending onto the df_p53_seq dataframe using cbind()
-#df_seq <- cbind(df_seq, as.data.frame(letterFrequency(df_seq$sequences_2, letters = c("A", "C", "G", "T"))))
-
-## Checking that the number counts of each nucleotide is appended to the end of the dataframe
-#View(df_seq)
-
-## Calculating the proportions of each nucleotide and appending to the dataframe
-#df_seq$A_prop <- (df_seq$A) / (df_seq$A + df_seq$T + df_seq$C + df_seq$G)
-#df_seq$T_prop <- (df_seq$T) / (df_seq$A + df_seq$T + df_seq$C + df_seq$G)
-#df_seq$G_prop <- (df_seq$G) / (df_seq$A + df_seq$T + df_seq$C + df_seq$G)
-#df_seq$C_prop <- (df_seq$C) / (df_seq$A + df_seq$T + df_seq$C + df_seq$G)
-
-## Checking that the proportions of each nucleotide is appended to the end of the dataframe
-#View(df_seq)
 
 ## Calculating the kmer frequency (dinucleotide) for each column
 df_seq <- cbind(df_seq, as.data.frame(dinucleotideFrequency(df_seq$sequences_2, as.prob = TRUE)))
 View(df_seq)
 
-## Now calculating the kmer frequency (trinucleotide) for each column
-# df_seq <- cbind(df_seq, as.data.frame(trinucleotideFrequency(df_seq$sequences_2, as.prob = TRUE)))
-#View(df_seq)
-
-#### STEP 6 : TRAINING CLASSIFICATION MODEL WITH RANDOM FORESTS ####
 ## Next, I will generate a training and validation set to train our model.
 ## Converting Biostring format back to character data for tidyverse functions.
 df_seq$sequences_2 <- as.character(df_seq$sequences_2)
@@ -239,8 +206,8 @@ table(df_validation$gene)
 
 ## Doing simple math to check if it is really 25% of our dataset for Cytb, Irbp, and Rag1 genes
 sum(df_validation$gene == "Cytb")/sum(df_seq$gene == "Cytb")*100 # 25.1%
-sum(df_validation$gene == "Irbp")/sum(df_seq$gene == "Irbp")*100 # 25.1%
-sum(df_validation$gene == "Rag1")/sum(df_seq$gene == "Rag1")*100 # 25.2%
+sum(df_validation$gene == "Irbp")/sum(df_seq$gene == "Irbp")*100 # 25 %
+sum(df_validation$gene == "Rag1")/sum(df_seq$gene == "Rag1")*100 # 25 %
 
 ## Need to ensure that the each samples downloaded from NCBI are unique in order to filter out rows from the validation set for our training set, the following should indicate TRUE if the dim and length of unique samples are the same
 dim(df_seq)[1] == length(unique(df_seq$samples)) 
@@ -257,8 +224,8 @@ table(df_training$gene)
 
 ## Doing simple math to check if it is really 75% of our dataset for Cytb, Irbp, and Rag1 genes
 sum(df_training$gene == "Cytb")/sum(df_seq$gene == "Cytb")*100 # 74.87%
-sum(df_training$gene == "Irbp")/sum(df_seq$gene == "Irbp")*100 # 74.87%
-sum(df_training$gene == "Rag1")/sum(df_seq$gene == "Rag1")*100 # 74.74%
+sum(df_training$gene == "Irbp")/sum(df_seq$gene == "Irbp")*100 # 75 %
+sum(df_training$gene == "Rag1")/sum(df_seq$gene == "Rag1")*100 # 75 %
 
 ## Build a classifier for each gene using with dinucleotide kmers. The response variable is gene, we are trying to predict which gene a sequence belongs to
 conflicted::conflicts_prefer(base::as.factor)
@@ -276,29 +243,39 @@ table(observed = df_validation$gene, predicted = prediction_validation_kmers)
 
 ## From the random forest model, it seems that the dinucleotide kmer model classifier did a great job at correctly identifying all 3 genes.
 
-## Now, I want to see which feature kmer feature contributed the most to the random forest model. Plotting a kmer frequency heatmap. Need to first convert kmer counts
-kmer_counts_df <- as.data.frame(dinucleotideFrequency(DNAStringSet(df_seq$sequences_2), as.prob = TRUE))
+## Now, I want to see which feature kmer feature contributed the most to the random forest model. Plotting a kmer frequency heatmap. Need to first convert to kmer counts
+kmer_counts_df <- as.data.frame(dinucleotideFrequency(DNAStringSet(df_training$sequences_2), as.prob = TRUE))
 head(kmer_counts_df)
 
 ## Adding gene names to dataframe
-kmer_counts_df$gene <- df_seq$gene 
+kmer_counts_df$gene <- df_training$gene 
 
-## Conver to longer dataframe format to plot graph
-kmer_long <- kmer_counts_df %>%
-  pivot_longer(cols = -gene, names_to = "kmer", values_to = "frequency")
+## Converting to longer dataframe format to plot graph in ggplot
+kmer_long <- melt(kmer_counts_df)
 
-## Plot heatmap with ggplot
-ggplot(kmer_long, aes(x = kmer, y = gene, fill = frequency)) +
+## Plotting heatmap with ggplot
+ggplot(kmer_long, aes(x = variable, y = gene, fill = value)) +
   geom_tile() +
-  scale_fill_gradient(low = "black", high = "red") +
-  labs(title = "Heatmap of Kmer Dinucleotide Contributions", x = "Dinucleotides", y = "Genes") +
+  scale_fill_gradient(low="white", high="blue") +
+  #scale_fill_gradient(low = "black", high = "red") +
+  labs(title = "Heatmap of K-mer Dinucleotide Contributions", x = "Dinucleotides", y = "Genes") +
   theme_minimal()
 ## From looking at the heatmap, it seems that different kmers proportions contributed for all 3 genes classifications.
 
+## Saving plot
+## today_date = Sys.Date()
+## ggsave(filename = paste0("../figs/", as.character(today), "_heatmap_kmer_random_forest.png"))
+       
 ## Other plots that I was interested in, for example the out of bag error rate as the number of trees increased.
-plot(gene_classifier_kmer, main = "Random Forest OOB Error Rate")
+plot(gene_classifier_kmer, main = "Random Forest Out of Bag Error Rate of each Gene")
 
-#### STEP 7: TRANING AND CLASSIFICATION OF OTHER METHODS USING CARET PACKAGE ####
+## Add a legend 
+legend("topright",
+       legend = c(colnames(gene_classifier_kmer$err.rate)),
+       col = 1:(ncol(gene_classifier_kmer$err.rate)),
+       lty = 1)
+
+#### STEP 6: TRANING AND CLASSIFICATION OF OTHER METHODS USING CARET PACKAGE ####
 ## After using random forest to train and classify our data, I now want to see if this holds true for other types of classifications. One example is called partial least squares, (PLS).
 
 ## First, must get rid of columns that contain string characters that will not be used in the model else, the function train in caret will not work, only works with numerical data.
@@ -319,25 +296,29 @@ plsFit
 plsFit$results #Accuracy increases as the number of components increases up to a maximum of 2
 plsFit$resample # Default boostrapping is 25, so it shows the accuracy value of each resampling
 
-## Simple ggplot to showcase the relationship between the performance values and number of PLS components
-ggplot(plsFit) +
-  theme_minimal() +
-  labs(title = "Relationship between Number of Components and Accuracy",
-       x = "Number of Components",
-       y = "Accuracy")
-## Warning message is due to the caret package using the old aes_string() instead of the new aes(), should not affect the analysis (and should probably report this issue to the developers...)
-
-## See which k-mer variable /features contributed to each machine learning model for each gene
-varImp(plsFit) %>%
-  plot(main = "K-mer Variable Importance Plot for PLS Classifier")
-
 ## Now, will see how well our model does on unseen (validation data)
 plsClasses <- predict(plsFit, newdata = df_validation)
 str(plsClasses) #Checking the structure of our validation 
 
 ## Computes the confusion matrix and the statistics of the PLS model fit
 confusionMatrix(data = plsClasses, as.factor(df_validation$gene))
+
 ## Accuracy was also at 100%, similar to the random forest model
+## Simple ggplot to showcase the relationship between the performance values and number of PLS components
+ggplot(plsFit) +
+  theme_minimal() +
+  labs(title = "Relationship between Number of Components and Accuracy",
+       x = "Number of Components",
+       y = "Accuracy")
+
+## Warning message is due to the caret package using the old aes_string() instead of the new aes(), should not affect the analysis (and should probably report this issue to the developers...)
+
+## Saving plot
+## ggsave(filename = paste0("../figs/", as.character(today_date), "_PLS_accuracy_component_plot.png"))
+
+## See which k-mer variable / features contributed to each machine learning model for each gene
+varImp(plsFit) %>%
+  plot(main = "K-mer Variable Importance Plot for PLS Classifier")
 
 ## Trying the model again but with a different classifier called the Regularized Discriminant Analysis (RDA), for a total of 3 replicate classifiers. Need to make our own custom grid to pass through the tuneGrid parameter, with gamma and lambda values since this is what RDA requires to classify, Avoiding 0 for gamma since there will be many warning messages that shows up.
 rdaGrid = data.frame(gamma = seq(0.1, 1.0, length = 5), lambda = 3/4)
@@ -380,7 +361,7 @@ df_cytb <- data.frame(TPR = roc_cytb$sensitivities, FPR = 1 - roc_cytb$specifici
 df_irbp <- data.frame(TPR = roc_irbp$sensitivities, FPR = 1 - roc_irbp$specificities, Class = "Irbp")
 df_rag1 <- data.frame(TPR = roc_rag1$sensitivities, FPR = 1 - roc_rag1$specificities, Class = "Rag1")
 
-## Plotting each gene in their own graph due to all of them overlapping each other
+## Plotting each gene in their own graph due to all of them overlapping each other, will be hard to see if graphed at once
 ggplot(df_cytb, aes(x = FPR, y = TPR)) +
   geom_line(size = 1.2, colour = "pink") +
   geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
@@ -389,6 +370,8 @@ ggplot(df_cytb, aes(x = FPR, y = TPR)) +
     x = "False Positive Rate",
     y = "True Positive Rate")
 
+## ggsave(filename = paste0("../figs/", as.character(today_date), "_roc_curve_RDA_for_cytb.png"))
+
 ggplot(df_irbp, aes(x = FPR, y = TPR)) +
   geom_line(size = 1.2, colour = "turquoise") +
   geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
@@ -396,6 +379,7 @@ ggplot(df_irbp, aes(x = FPR, y = TPR)) +
   labs(title = "ROC Curve for RDA Classifier (Irbp)",
        x = "False Positive Rate",
        y = "True Positive Rate")
+## ggsave(filename = paste0("../figs/", as.character(today_date), "_roc_curve_RDA_for_Irbp.png"))
 
 ggplot(df_rag1, aes(x = FPR, y = TPR)) +
   geom_line(size = 1.2, colour = "lightgreen") +
@@ -404,24 +388,26 @@ ggplot(df_rag1, aes(x = FPR, y = TPR)) +
   labs(title = "ROC Curve for RDA Classifier (Rag1)",
        x = "False Positive Rate",
        y = "True Positive Rate")
+## ggsave(filename = paste0("../figs/", as.character(today_date), "_roc_curve_RDA_for_rag1.png"))
 
-#### STEP 8: SPECIES LEVEL CLASSIFICATION (ADDITIONAL ANALYSIS SINCE THERE WAS 100% ACCURACY) ####
-#Since PLS, random forests, and RDA all have been at 100% classification accuracy on genes at training on data and predicting on unseen data, I want to see if the classifiers can accurately classify Muridae species.
-#Reading in the full set of cytb set with all 749 genes from web ncbi data, since it 
-df_cytb_2 <- readDNAStringSet("../data/muridae_cytb_749_entries.fasta")
+#### STEP 7: SPECIES LEVEL CLASSIFICATION (ADDITIONAL ANALYSIS) ####
+#Since PLS, random forests, and RDA all have been at 100% classification accuracy on genes at training on data and predicting on unseen data, I want to see if the classifiers can accurately classify Muridae species. Assignment instructions indicates to attempt a more difficult problem.
+#Reading in the full set of cytb set with all 749 genes from web ncbi data, and convert to dataframe
+df_cytb_2 <- readDNAStringSet("../data/muridae_cytb_740_entries.fasta")
 df_cytb_2 <- data.frame(samples = c(names(df_cytb_2)), gene = "Cytb", sequences = paste(df_cytb_2))
 #entrez_fetch(db = "nuccore", id = ncbi_muridae$`Cytb[gene] and complete CDS`$ids, rettype = "fasta")
 
 ## Since our samples column contains the species name but it is pretty messy, will recreate a new column to their actual species name by using regex expressions. Species names always start with a capital letter, followed by a space, then lowercase letters
-species_name<- str_extract(string = df_cytb_2$samples, pattern = "[A-Z][a-z]+ [a-z]+")
+species_name <- str_extract(string = df_cytb_2$samples, pattern = "[A-Z][a-z]+ [a-z]+")
 
 ## Combining our species name to our dataframe
 df_cytb_2 <- cbind(df_cytb_2, species_name)
+names(df_cytb_2)
 
 ## Checking the distribution of the species names
 table(df_cytb_2$species_name)
 
-## Some entries do not have actual full species name, such as Aethomys sp. This is not specific enough for the purpose of the classifier therefore, will filter them. Also, filter in case there are any Na values in names, species_name, genes, and sequence columns. Also, filtering out ambiguous nucleotide sequences that are greater than 5% and any trailing and leading Ns.
+## Some entries do not have actual full species name, such as "Aethomys sp". This is not specific enough for the purpose of the species classifier therefore, will filter them out. Also, filter in case there are any Na values in names, species_name, genes, and sequence columns. Also, filtering out ambiguous nucleotide sequences that are greater than 5% and any trailing and leading Ns.
 df_cytb_2_filtered <- df_cytb_2 %>%
   filter(!is.na(species_name),
          !is.na(sequences),
@@ -432,21 +418,18 @@ df_cytb_2_filtered <- df_cytb_2 %>%
   mutate(sequences_2 = str_remove_all(sequences_2, "-+")) %>%
   filter(str_count(sequences_2, "N") <= 0.05 * str_count(sequences))
 
-## Sanity check for Nas
-sum(is.na(df_combine_2_filtered$species_name)) #Returns 0
-sum(is.na(df_combine_2_filtered$sequences)) #Returns 0
-sum(is.na(df_combine_2_filtered$gene)) #Returns 0
+## Sanity check for Nas and vague species names
+sum(is.na(df_cytb_2_filtered$species_name)) #Returns 0
+sum(is.na(df_cytb_2_filtered$sequences)) #Returns 0
+sum(is.na(df_cytb_2_filtered$gene)) #Returns 0
 table(df_cytb_2_filtered$species_name) # No more vague species names
 
 ## Convert to biostrings class
 df_cytb_2_filtered$sequences_2 <- DNAStringSet(df_cytb_2_filtered$sequences_2)
 class(df_cytb_2_filtered$sequences_2) #is a Biostrings class
 
-## Calculating the 2 and 3 kmer frequency (dinucleotide) for each column
+## Calculating the kmer frequency (dinucleotide) for each column
 df_seq_cytb <- cbind(df_cytb_2_filtered, as.data.frame(dinucleotideFrequency(df_cytb_2_filtered$sequences_2, as.prob = TRUE)))
-View(df_seq_cytb)
-
-df_seq_cytb <- cbind(df_seq_cytb, as.data.frame(trinucleotideFrequency(df_seq_cytb$sequences_2, as.prob = TRUE)))
 View(df_seq_cytb)
 
 ## Convert back to character class for tidyverse
@@ -454,7 +437,7 @@ df_seq_cytb$sequences_2 <- as.character(df_seq_cytb$sequences_2)
 class(df_seq_cytb$sequences_2)
 
 ## Setting seed to produce randomization, grouping by species, and want to make this analysis reproducible in creating a validation set.
-set.seed(666)
+set.seed(647)
 df_validation_cytb <- df_seq_cytb %>%
   group_by(species_name) %>%
   sample_frac(0.25)
@@ -463,7 +446,7 @@ df_validation_cytb <- df_seq_cytb %>%
 length(df_validation_cytb$species_name)/length(df_cytb_2_filtered$species_name) #23.5 %
 
 ## Setting seed to make this analysis reproducible and creating a training set
-set.seed(666)
+set.seed(647)
 df_training_cytb <- df_seq_cytb %>%
   dplyr::filter(!samples %in% df_validation_cytb$samples) %>%
   dplyr::group_by(gene)
@@ -471,36 +454,89 @@ df_training_cytb <- df_seq_cytb %>%
 ## Ensuring that we have actually have 75% of our dataset
 length(df_training_cytb$species_name)/length(df_seq_cytb$species_name) #76.4 %
 
-## Build a classifier for each gene using the dinucleotide kmers. The response variable is gene, we are trying to predict which gene a sequence belongs to
+## Build a classifier for each gene using the dinucleotide kmers. The response variable is species, we are trying to classify species based on Cytb gene sequence
 conflicted::conflicts_prefer(base::as.factor)
 species_classifier_cytb <- randomForest::randomForest(x = df_training_cytb[, 6:21], y = as.factor(df_training_cytb$species_name), ntree = 50, importance = TRUE)
 
-## Looking at the results and confusion matrix
+## Looking at the results, confusion matrix, and the error rate
 species_classifier_cytb
 species_classifier_cytb$confusion
 species_classifier_cytb$err.rate
 
-## On unseen data
+## Prediction on unseen data
 prediction_cytb <- predict(species_classifier_cytb, df_validation_cytb[, c(4, 6:21)])
-table(observed = df_validation_cytb$gene, predicted = prediction_cytb)
+table(observed = df_validation_cytb$species_name, predicted = prediction_cytb)
+## By looking at the table above, it seems that it the model did a good job at predicting species, there were a few misclassified species though such as Apodemus draco misclassified as Apodemus ilex.
 
-## Relevant plots for classification such as checking out error rates
-plot(species_classifier_cytb, main = "Error rates vs number of trees in species classifier") 
-# wow okay so this was not great, as compared to the gene classifier
+## Relevant diagnostic plots for classification such as checking out error rates
+plot(species_classifier_cytb, 
+     main = "Error rates vs number of trees in species classifier")
 
-varImp(species_classifier_cytb)
+## Add a caption to the bottom of the graph 
+mtext(text = "Each line represents a different Muridae species", side = 1, adj = 0, line = 4) 
+## This is busier, as compared to the gene classifier graph
 
-# For trinuclotide frequency
-#species_classifier_cytb_3 <- randomForest::randomForest(x = df_training_cytb[, 22:85], y = as.factor(df_training_cytb$species_name_cytb), ntree = 50, importance = TRUE)
-#species_classifier_cytb_3
-## STASTICAL ANALYSIS AND PLOTTING
+## Now I am plotting a heatmap to see which dinucleotide frequency contributed the most for each species classification during training
+kmer_cytb_df <- as.data.frame(dinucleotideFrequency(DNAStringSet(df_training_cytb$sequences_2), 
+                                                    as.prob = TRUE))
+## CHecking for the top of dataframe
+head(kmer_cytb_df)
 
-#Since our classifier 
-## Canddicate plots
-#⃣ k-mer Frequency Heatmaps
-#t-SNE of UMAP
-# ROC / Precision-Recall Curves
-#feature importance 
-#4⃣ Confusion Matrix Heatmap
+## Adding species names to dataframe
+kmer_cytb_df$species_name <- df_training_cytb$species_name 
 
-##
+## Convert to longer dataframe format to plot graph
+kmer_cytb_long <- melt(kmer_cytb_df)
+head(kmer_cytb_long)
+
+## Plot heatmap with ggplot
+ggplot(kmer_cytb_long, aes(x = variable, y = species_name, fill = value)) +
+  geom_tile() +
+  scale_fill_distiller(palette = "RdPu") +
+  labs(title = "Heatmap of K-mer Dinucleotide Contributions", x = "Dinucleotides k-mer", y = "Muridae species") 
+
+## Save to figs folder
+## ggsave(filename = paste0("../figs/", as.character(today), "_kmer_heatmap_Muridae_classifier_training.png"))
+
+## Plotting a multidimensional scaling plot to see clustering of each species classification
+mds_cytb <- dist(df_training_cytb[,6:21], method = "euclidean")
+cmds_cytb <- cmdscale(mds_cytb)
+
+## Plotting with base R plot
+plot(cmds_cytb, col = as.factor(df_training_cytb$species_name), pch = 19, xlab = "MDS Dimension 1", ylab = "MDS Dimension 2")
+
+## Performing a permanova test to see the how well the classifier did and whether the kmer classifier is significant.
+permanova_test <- adonis2(mds_cytb ~ species_name, data = df_training_cytb)
+permanova_test
+
+## Add the statistic to the plot
+mtext(paste0("R² value = ", round(permanova_test$R2[1], 3), 
+                       "\n p = ", permanova_test$`Pr(>F)`[1],
+                        "\n F statistic = ", round(permanova_test$F[1], 3)), side = 3, line = -3, adj = 1)
+
+## Calculate the mean values for each species with aggregate which computes the mean of each species and returns a dataframe
+species_mean <- aggregate(cmds_cytb, by = list(df_training_cytb$species_name), FUN = mean)
+is.data.frame(species_mean)
+
+## Commented out due to cluttering the plot with all species names. Uncomment it if you are curious
+## text(species_mean$V1, species_mean$V2, labels = species_mean$Group.1, cex = 0.8, font = 2)
+
+## Checking if I can pull the mean values for Mus musculus
+species_mean$V1[species_mean$Group.1 == "Mus musculus"]
+
+## Checking which species have high counts
+high_counts <- sort(table(df_training_cytb$species_name), decreasing = TRUE)
+high_counts
+
+## Since there are too many species to be labeled, only label the top 6 with the most entries.
+top_species <- head(names(high_counts), 6)
+top_species # Check the top 6 
+
+## Use a loop to label the MDS plot
+for (i in top_species) {
+  text(species_mean$V1[species_mean$Group.1 == i],
+       species_mean$V2[species_mean$Group.1 == i],
+       labels = i,
+       cex = 0.8, font = 2)
+  }
+## From the plot, a yellow cluster can be seen on the right corresponding to Mus musculus. Mus triton makes a nice cluster in green and the same results for Rattus norvegicus in magenta.
